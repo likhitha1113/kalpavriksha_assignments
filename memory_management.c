@@ -18,7 +18,6 @@ typedef struct
 
 unsigned char *memoryPool = NULL;
 Block *blocks = NULL;
-
 int poolSize;
 int blockCount = 0;
 int capacity = 2;
@@ -28,22 +27,18 @@ int currentStrategy;
 int insertBlock(int index, Block newBlock)
 {
     if(index < 0 || index > blockCount)
+    {
         return 0;
-
+    }
     if(blockCount >= capacity)
     {
         int newCapacity = capacity * 2;
-
-        Block *temp = realloc(blocks,
-                              newCapacity * sizeof(Block));
-
+        Block *temp = realloc(blocks, newCapacity * sizeof(Block));
         if(temp == NULL)
         {
             printf("Metadata expansion failed!\n");
             return 0;
         }
-
-        // Update the original pointer and capacity only after success.
         blocks = temp;
         capacity = newCapacity;
     }
@@ -52,10 +47,8 @@ int insertBlock(int index, Block newBlock)
     {
         blocks[i] = blocks[i - 1];
     }
-
     blocks[index] = newBlock;
     blockCount++;
-
     return 1;
 }
 
@@ -98,7 +91,6 @@ int findBlockIndex(int requestSize)
             }
         }
     }
-
     else if(currentStrategy == BEST_FIT)
     {
         int bestSize = 1000000000;
@@ -111,7 +103,6 @@ int findBlockIndex(int requestSize)
             }
         }
     }
-
     else if(currentStrategy == WORST_FIT)
     {
         int worstSize = 0;
@@ -160,39 +151,33 @@ void allocateMemory()
     int req;
     printf("Requested size: ");
     scanf("%d", &req);
-
     if(req <= 0 || req > poolSize)
     {
         printf("Invalid request size!\n");
         return;
     }
-
     int idx = findBlockIndex(req);
-
     if(idx == -1)
     {
         printf("Allocation failed.\n");
         checkFragmentation(req);
         return;
     }
-
     Block *b = &blocks[idx];
 
     if(b->size > req)
     {
         Block freePart;
-
         freePart.start = b->start + req;
         freePart.size = b->size - req;
         freePart.status = FREE;
         freePart.allocationID = -1;
         if(!insertBlock(idx + 1, freePart))
-{
-    printf("Metadata allocation failed.\n");
-    return;
-}
+        {
+        printf("Metadata allocation failed.\n");
+        return;
+        }
     }
-
     blocks[idx].size = req;
     blocks[idx].status = ALLOCATED;
     blocks[idx].allocationID = nextID++;
@@ -204,57 +189,42 @@ void allocateMemory()
            blocks[idx].size);
 }
 
-/*------------------------------------------------*/
 void releaseMemoryBlock()
 {
     int id;
-
     printf("Allocation ID: ");
     scanf("%d", &id);
-
     for(int i = 0; i < blockCount; i++)
     {
-        if(blocks[i].allocationID == id &&
-           blocks[i].status == ALLOCATED)
+        if(blocks[i].allocationID == id && blocks[i].status == ALLOCATED)
         {
             blocks[i].status = FREE;
             blocks[i].allocationID = -1;
-
             mergeFreeBlocks();
-
             printf("Allocation released.\n");
             return;
         }
     }
-
     printf("Invalid Allocation ID!\n");
 }
 
-/*------------------------------------------------*/
 void resizeAllocation()
 {
     int id;
     int newSize;
-
     printf("Allocation ID: ");
     scanf("%d", &id);
-
     printf("New Size: ");
     scanf("%d", &newSize);
-
     if(newSize <= 0 || newSize > poolSize)
     {
         printf("Invalid Size!\n");
         return;
     }
-
-    // Find the allocation to resize.
     int idx = -1;
-
     for(int i = 0; i < blockCount; i++)
     {
-        if(blocks[i].allocationID == id &&
-           blocks[i].status == ALLOCATED)
+        if(blocks[i].allocationID == id && blocks[i].status == ALLOCATED)
         {
             idx = i;
             break;
@@ -266,8 +236,6 @@ void resizeAllocation()
         printf("Allocation not found!\n");
         return;
     }
-
-    // Save values, not pointers: insertBlock() may realloc the array.
     int oldStart = blocks[idx].start;
     int oldSize = blocks[idx].size;
 
@@ -281,68 +249,48 @@ void resizeAllocation()
     if(newSize < oldSize)
     {
         Block freeBlock;
-
         freeBlock.start = oldStart + newSize;
         freeBlock.size = oldSize - newSize;
         freeBlock.status = FREE;
         freeBlock.allocationID = -1;
-
-        // Insert first. If this fails, the original allocation is untouched.
         if(!insertBlock(idx + 1, freeBlock))
         {
             printf("Resize failed: metadata allocation failed. "
                    "Original allocation is unchanged.\n");
             return;
         }
-
-        // idx is still the original block's index because insertion is after it.
         blocks[idx].size = newSize;
-
         mergeFreeBlocks();
-
         printf("Allocation shrunk.\n");
         return;
     }
 
     // CASE 2: Expand into the immediately adjacent free block.
     int needed = newSize - oldSize;
-
-    if(idx + 1 < blockCount &&
-       blocks[idx + 1].status == FREE &&
-       blocks[idx + 1].size >= needed)
+    if(idx + 1 < blockCount && blocks[idx + 1].status == FREE && blocks[idx + 1].size >= needed)
     {
         blocks[idx].size = newSize;
-
         blocks[idx + 1].start += needed;
         blocks[idx + 1].size -= needed;
-
         if(blocks[idx + 1].size == 0)
             removeBlock(idx + 1);
-
         printf("Expanded in place.\n");
         return;
     }
 
     // CASE 3: Move the allocation to another suitable free block.
     int target = findBlockIndex(newSize);
-
     if(target == -1)
     {
         printf("Resize failed: no suitable free block.\n");
         printf("Original allocation and its data are unchanged.\n");
         return;
     }
-
-    // Save destination details before insertion can move the metadata array.
-    int newStart = blocks[target].start;
+     int newStart = blocks[target].start;
     int destinationSize = blocks[target].size;
-
-    // If the destination is larger, reserve the remaining free block first.
-    // If insertion fails, no memory-map entries have been changed.
     if(destinationSize > newSize)
     {
         Block remain;
-
         remain.start = newStart + newSize;
         remain.size = destinationSize - newSize;
         remain.status = FREE;
@@ -356,59 +304,39 @@ void resizeAllocation()
         }
     }
 
-    // Copy the old contents before releasing the original region.
-    memmove(memoryPool + newStart,
-            memoryPool + oldStart,
-            oldSize);
-
-    // Turn the destination into the resized allocation.
-    // target remains valid because the inserted remainder is at target + 1.
+    memmove(memoryPool + newStart, memoryPool + oldStart, oldSize);
     blocks[target].start = newStart;
     blocks[target].size = newSize;
     blocks[target].status = ALLOCATED;
     blocks[target].allocationID = id;
-
-    // Find the original allocation again: its array index may have shifted.
     int oldIndex = -1;
 
     for(int i = 0; i < blockCount; i++)
     {
-        if(blocks[i].start == oldStart &&
-           blocks[i].allocationID == id &&
-           blocks[i].status == ALLOCATED)
+        if(blocks[i].start == oldStart && blocks[i].allocationID == id && blocks[i].status == ALLOCATED)
         {
             oldIndex = i;
             break;
         }
     }
-
-    // Release the old region, preserving the resized allocation's ID.
     if(oldIndex != -1)
     {
         blocks[oldIndex].status = FREE;
         blocks[oldIndex].allocationID = -1;
     }
-
     mergeFreeBlocks();
-
     printf("Allocation moved and resized.\n");
-    printf("Old start: %d, New start: %d, New size: %d\n",
-           oldStart, newStart, newSize);
+    printf("Old start: %d, New start: %d, New size: %d\n", oldStart, newStart, newSize);
 }
 
-/*------------------------------------------------*/
 void displayMap()
 {
-    printf("\nMemory Map (%d bytes)\n\n",
-           poolSize);
-
+    printf("\nMemory Map (%d bytes)\n\n", poolSize);
     for(int i = 0; i < blockCount; i++)
     {
         if(blocks[i].status == FREE)
         {
-            printf("[Free : %d bytes, Start : %d]\n",
-                   blocks[i].size,
-                   blocks[i].start);
+            printf("[Free : %d bytes, Start : %d]\n", blocks[i].size, blocks[i].start);
         }
         else
         {
@@ -420,7 +348,6 @@ void displayMap()
     }
 }
 
-/*------------------------------------------------*/
 void displayStatistics()
 {
     int allocated = 0;
@@ -435,9 +362,10 @@ void displayStatistics()
         {
             freeMem += blocks[i].size;
             freeBlocks++;
-
             if(blocks[i].size > largestFree)
+            {
                 largestFree = blocks[i].size;
+            }
         }
         else
         {
@@ -445,7 +373,6 @@ void displayStatistics()
             allocatedBlocks++;
         }
     }
-
     printf("\nMemory Statistics\n");
     printf("Total Memory      : %d bytes\n", poolSize);
     printf("Allocated Memory  : %d bytes\n", allocated);
@@ -455,13 +382,11 @@ void displayStatistics()
     printf("Largest Free Block: %d bytes\n", largestFree);
 }
 
-/*------------------------------------------------*/
 void changeStrategy()
 {
     printf("\n1. First Fit\n");
     printf("2. Best Fit\n");
     printf("3. Worst Fit\n");
-
     printf("Choice: ");
     scanf("%d",&currentStrategy);
 
@@ -472,12 +397,10 @@ void changeStrategy()
     }
 }
 
-/*------------------------------------------------*/
 int main()
 {
     printf("Enter memory pool size: ");
     scanf("%d",&poolSize);
-
     if(poolSize < 1 || poolSize > 1000000)
     {
         printf("Invalid pool size!\n");
@@ -488,40 +411,30 @@ int main()
     printf("1. First Fit\n");
     printf("2. Best Fit\n");
     printf("3. Worst Fit\n");
-
-    if (scanf("%d", &currentStrategy) != 1 ||
-    currentStrategy < FIRST_FIT ||
-    currentStrategy > WORST_FIT)
+    if (scanf("%d", &currentStrategy) != 1 || currentStrategy < FIRST_FIT || currentStrategy > WORST_FIT)
     {
-    printf("Invalid allocation strategy!\n");
-    return 1;
+        printf("Invalid allocation strategy!\n");
+        return 1;
     }
-    
     memoryPool = (unsigned char*)malloc(poolSize);
-
     if(memoryPool == NULL)
     {
         printf("Memory allocation failed!\n");
         return 1;
     }
-
     blocks = (Block*)malloc(capacity * sizeof(Block));
-
     if(blocks == NULL)
     {
         free(memoryPool);
         return 1;
     }
-
     blockCount = 1;
-
     blocks[0].start = 0;
     blocks[0].size = poolSize;
     blocks[0].allocationID = -1;
     blocks[0].status = FREE;
 
     int choice;
-
     do
     {
         printf("\n===== SMART MEMORY MANAGER =====\n");
@@ -535,7 +448,6 @@ int main()
         printf("Choice: ");
 
         scanf("%d",&choice);
-
         switch(choice)
         {
             case 1:
@@ -574,6 +486,5 @@ int main()
 
     free(memoryPool);
     free(blocks);
-
     return 0;
 }
